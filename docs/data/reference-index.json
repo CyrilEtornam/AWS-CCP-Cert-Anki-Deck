@@ -1,0 +1,78 @@
+[
+  {
+    "file": "account_management_billing_support.md",
+    "title": "Account Management, Billing & Support"
+  },
+  {
+    "file": "advanced_identity.md",
+    "title": "Advanced Identity"
+  },
+  {
+    "file": "architecting_and_ecosystem.md",
+    "title": "AWS Architecting & Ecosystem"
+  },
+  {
+    "file": "cloud_computing.md",
+    "title": "Cloud Computing"
+  },
+  {
+    "file": "cloud_integration.md",
+    "title": "Cloud Integration"
+  },
+  {
+    "file": "cloud_monitoring.md",
+    "title": "Cloud Monitoring"
+  },
+  {
+    "file": "databases.md",
+    "title": "Databases & Analytics"
+  },
+  {
+    "file": "deploying.md",
+    "title": "Deploying and Managing Infrastructure at Scale"
+  },
+  {
+    "file": "ec2.md",
+    "title": "EC2: Virtual Machines"
+  },
+  {
+    "file": "ec2_storage.md",
+    "title": "EC2 Instance Storage"
+  },
+  {
+    "file": "elb_asg.md",
+    "title": "Elastic Load Balancing & Auto Scaling Groups"
+  },
+  {
+    "file": "global_infrastructure.md",
+    "title": "Global Infrastructure"
+  },
+  {
+    "file": "iam.md",
+    "title": "IAM: Identity Access & Management (IAM)"
+  },
+  {
+    "file": "machine_learning.md",
+    "title": "Machine Learning"
+  },
+  {
+    "file": "other_aws_services.md",
+    "title": "Other AWS Services"
+  },
+  {
+    "file": "other_compute.md",
+    "title": "Other Compute"
+  },
+  {
+    "file": "s3.md",
+    "title": "Amazon S3"
+  },
+  {
+    "file": "security_compliance.md",
+    "title": "Security & Compliance"
+  },
+  {
+    "file": "vpc.md",
+    "title": "VPC"
+  }
+]
