@@ -21,6 +21,170 @@ OUT_DIR = ROOT / "docs" / "data"
 CHOICE_SPLIT_RE = re.compile(r"<br\s*/?>(?=[A-F]\. )")
 ANSWER_LETTERS_RE = re.compile(r"Correct answers?:\s*([A-F](?:,\s*[A-F])*)")
 
+# Ordered (slug, title, domain) for every reference topic except study-guide.md
+# (the curriculum's own meta-document, not a classification target). Order is
+# curated for a sensible learning progression within each domain, not
+# alphabetical. domain is 1-4 matching the official CLF-C01 exam guide:
+# 1 Cloud Concepts, 2 Security and Compliance, 3 Technology, 4 Billing and Pricing.
+DOMAIN_TITLES = {
+    1: "Cloud Concepts",
+    2: "Security and Compliance",
+    3: "Technology",
+    4: "Billing and Pricing",
+}
+
+TOPIC_ORDER = [
+    ("cloud_computing", "Cloud Computing", 1),
+    ("architecting_and_ecosystem", "AWS Architecting & Ecosystem", 1),
+    ("iam", "IAM", 2),
+    ("advanced_identity", "Advanced Identity", 2),
+    ("security_compliance", "Security & Compliance", 2),
+    ("global_infrastructure", "Global Infrastructure", 3),
+    ("ec2", "EC2: Virtual Machines", 3),
+    ("other_compute", "Other Compute", 3),
+    ("ec2_storage", "EC2 Instance Storage", 3),
+    ("elb_asg", "Elastic Load Balancing & Auto Scaling Groups", 3),
+    ("vpc", "VPC", 3),
+    ("s3", "Amazon S3", 3),
+    ("databases", "Databases & Analytics", 3),
+    ("cloud_integration", "Cloud Integration", 3),
+    ("machine_learning", "Machine Learning", 3),
+    ("cloud_monitoring", "Cloud Monitoring", 3),
+    ("deploying", "Deploying and Managing Infrastructure at Scale", 3),
+    ("other_aws_services", "Other AWS Services", 3),
+    ("account_management_billing_support", "Account Management, Billing & Support", 4),
+]
+
+FALLBACK_TOPIC = "other_aws_services"
+FALLBACK_DOMAIN = dict((slug, domain) for slug, _, domain in TOPIC_ORDER)[FALLBACK_TOPIC]
+
+# Words too generic in this AWS-only corpus to carry classification signal on
+# their own (they'd match almost every card). Full multi-word phrases mined
+# from headings are unaffected by this list - only single-word keywords are
+# filtered against it.
+GENERIC_WORDS = {
+    "aws", "amazon", "cloud", "service", "services", "data", "using", "used",
+    "use", "also", "which", "about", "provides", "provide", "allows", "allow",
+    "includes", "include", "level", "based", "time", "user", "users",
+    "account", "accounts", "with", "from", "your", "that", "this", "into",
+    "these", "those", "other", "more", "most", "such", "only", "same",
+    "over", "under", "between", "across", "within", "without", "different",
+    "example", "examples", "type", "types", "when", "where", "what", "why",
+    # Incidental fragments of multi-word headings/product names (e.g. "center"
+    # from "IAM Identity Center", "volume" from "EBS Volumes") that are too
+    # generic on their own and cause false-positive matches on unrelated cards.
+    "center", "centre", "single", "login", "store", "stores", "management",
+    "manage", "create", "creating", "created", "system", "systems",
+    "application", "applications", "database", "databases", "instance",
+    "instances", "resource", "resources", "access", "information", "general",
+    "basic", "common", "various", "multiple", "primary", "secondary",
+    "volume", "volumes", "group", "groups", "control", "controls",
+}
+
+HEADING_STOPWORDS_RE = re.compile(
+    r"\b(what is|what's|why|define|overview|summary|introduction|section|"
+    r"benefits of|example of|example usage|example commands|key features of|"
+    r"common|settings|guidelines|best practices|use cases?|comparison|"
+    r"versus|vs\.?|general|guiding principles|features)\b",
+    re.IGNORECASE,
+)
+
+
+def clean_phrase(text):
+    text = re.sub(r"[*_`]", "", text)
+    text = HEADING_STOPWORDS_RE.sub(" ", text)
+    text = re.sub(r"[^a-zA-Z0-9&\s]", " ", text)
+    return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def title_keywords(title):
+    out = []
+    for paren in re.findall(r"\(([^)]+)\)", title):
+        phrase = clean_phrase(paren)
+        if phrase:
+            out.append((phrase, 4))
+    base = clean_phrase(re.sub(r"\([^)]*\)", " ", title))
+    if base:
+        out.append((base, 4))
+    return out
+
+
+def mine_heading_keywords(md_file):
+    with open(md_file) as f:
+        content = f.read()
+
+    phrase_weights = {}
+
+    def bump(phrase, weight):
+        phrase = phrase.strip().lower()
+        if len(phrase) >= 3:
+            phrase_weights[phrase] = max(phrase_weights.get(phrase, 0), weight)
+
+    for heading in re.findall(r"^#{1,4}\s+(.*)$", content, re.MULTILINE):
+        for paren in re.findall(r"\(([^)]+)\)", heading):
+            bump(clean_phrase(paren), 2)
+        phrase = clean_phrase(re.sub(r"\([^)]*\)", " ", heading))
+        if not phrase:
+            continue
+        bump(phrase, 2)
+        for word in phrase.split():
+            if len(word) >= 4 and word not in GENERIC_WORDS:
+                bump(word, 1)
+
+    return list(phrase_weights.items())
+
+
+def build_topic_keywords():
+    mined = []
+    for slug, title, domain in TOPIC_ORDER:
+        md_file = SRC_REFERENCE / f"{slug}.md"
+        keywords = title_keywords(title) + mine_heading_keywords(md_file)
+        mined.append((slug, domain, keywords))
+
+    # Some reference files re-cover ground that has its own dedicated topic
+    # (e.g. cloud_computing.md has a "Shared Responsibility Model" heading
+    # that duplicates security_compliance.md's). An identical heading-derived
+    # phrase mined from more than one topic is ambiguous by definition -
+    # drop it everywhere rather than let it distort scoring. Title keywords
+    # (weight 4) are exempt: topic titles shouldn't collide in practice, and
+    # if they did, that's a real signal worth keeping.
+    phrase_topic_counts = {}
+    for slug, domain, keywords in mined:
+        for phrase, weight in keywords:
+            if weight < 4:
+                phrase_topic_counts[phrase] = phrase_topic_counts.get(phrase, set()) | {slug}
+
+    ambiguous = {p for p, topics in phrase_topic_counts.items() if len(topics) > 1}
+
+    topic_keywords = []
+    for slug, domain, keywords in mined:
+        deduped = [(p, w) for p, w in keywords if w >= 4 or p not in ambiguous]
+        topic_keywords.append((slug, domain, deduped))
+    return topic_keywords
+
+
+def clean_card_text(html):
+    text = re.sub(r"\{\{c\d+::(.*?)(?:::.*?)?\}\}", r"\1", html)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"&[a-zA-Z#0-9]+;", " ", text)
+    return text.lower()
+
+
+def classify(text, topic_keywords):
+    cleaned = clean_card_text(text)
+    best_slug, best_domain = FALLBACK_TOPIC, FALLBACK_DOMAIN
+    best_rank = (0, 0)  # (total score, strongest single match) - specificity breaks ties
+
+    for slug, domain, keywords in topic_keywords:
+        hits = [weight for phrase, weight in keywords if phrase in cleaned]
+        if not hits:
+            continue
+        rank = (sum(hits), max(hits))
+        if rank > best_rank:
+            best_slug, best_domain, best_rank = slug, domain, rank
+
+    return best_slug, best_domain
+
 
 def collect_notes(node, deck_name=None):
     """Walk the CrowdAnki tree, returning (note, deck_name) pairs.
@@ -57,7 +221,7 @@ def parse_mcq(front, back):
     }
 
 
-def build_deck():
+def build_deck(topic_keywords):
     with open(SRC_DECK) as f:
         root = json.load(f)
 
@@ -69,6 +233,7 @@ def build_deck():
         fields = note["fields"]
 
         if model_name == "Cloze":
+            classify_text = fields[0] + " " + fields[1]
             card = {
                 "id": note["guid"],
                 "type": "cloze",
@@ -79,6 +244,9 @@ def build_deck():
             }
         elif model_name == "AWS MCQ":
             mcq = parse_mcq(fields[0], fields[1])
+            classify_text = " ".join(
+                [mcq["question"]] + [c["text"] for c in mcq["choices"]] + [mcq["explanation"]]
+            )
             card = {
                 "id": note["guid"],
                 "type": "mcq",
@@ -89,9 +257,33 @@ def build_deck():
         else:
             continue
 
+        topic, domain = classify(classify_text, topic_keywords)
+        card["topic"] = topic
+        card["domain"] = domain
         cards.append(card)
 
     return cards
+
+
+def build_curriculum(cards):
+    counts = {}
+    for card in cards:
+        counts[card["topic"]] = counts.get(card["topic"], 0) + 1
+
+    domains = []
+    for domain_num in sorted(DOMAIN_TITLES):
+        topics = [
+            {"slug": slug, "title": title, "count": counts.get(slug, 0)}
+            for slug, title, d in TOPIC_ORDER
+            if d == domain_num
+        ]
+        domains.append({
+            "domain": domain_num,
+            "title": DOMAIN_TITLES[domain_num],
+            "count": sum(t["count"] for t in topics),
+            "topics": topics,
+        })
+    return domains
 
 
 def extract_title(md_file):
@@ -118,10 +310,16 @@ def build_reference():
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    cards = build_deck()
+    topic_keywords = build_topic_keywords()
+    cards = build_deck(topic_keywords)
     with open(OUT_DIR / "deck.json", "w") as f:
         json.dump(cards, f, indent=2)
     print(f"Wrote {len(cards)} cards to {OUT_DIR / 'deck.json'}")
+
+    curriculum = build_curriculum(cards)
+    with open(OUT_DIR / "curriculum.json", "w") as f:
+        json.dump(curriculum, f, indent=2)
+    print(f"Wrote curriculum.json ({sum(d['count'] for d in curriculum)} classified cards across {len(curriculum)} domains)")
 
     files = build_reference()
     with open(OUT_DIR / "reference-index.json", "w") as f:

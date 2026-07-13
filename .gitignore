@@ -1,3 +1,4 @@
 .claude/settings.local.json
 *.bak
 /AWS-Certified-Cloud-Practitioner-Notes/
+__pycache__/

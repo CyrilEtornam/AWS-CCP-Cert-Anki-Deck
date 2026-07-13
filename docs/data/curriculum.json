@@ -1,0 +1,125 @@
+[
+  {
+    "domain": 1,
+    "title": "Cloud Concepts",
+    "count": 238,
+    "topics": [
+      {
+        "slug": "cloud_computing",
+        "title": "Cloud Computing",
+        "count": 164
+      },
+      {
+        "slug": "architecting_and_ecosystem",
+        "title": "AWS Architecting & Ecosystem",
+        "count": 74
+      }
+    ]
+  },
+  {
+    "domain": 2,
+    "title": "Security and Compliance",
+    "count": 241,
+    "topics": [
+      {
+        "slug": "iam",
+        "title": "IAM",
+        "count": 108
+      },
+      {
+        "slug": "advanced_identity",
+        "title": "Advanced Identity",
+        "count": 6
+      },
+      {
+        "slug": "security_compliance",
+        "title": "Security & Compliance",
+        "count": 127
+      }
+    ]
+  },
+  {
+    "domain": 3,
+    "title": "Technology",
+    "count": 869,
+    "topics": [
+      {
+        "slug": "global_infrastructure",
+        "title": "Global Infrastructure",
+        "count": 79
+      },
+      {
+        "slug": "ec2",
+        "title": "EC2: Virtual Machines",
+        "count": 160
+      },
+      {
+        "slug": "other_compute",
+        "title": "Other Compute",
+        "count": 48
+      },
+      {
+        "slug": "ec2_storage",
+        "title": "EC2 Instance Storage",
+        "count": 30
+      },
+      {
+        "slug": "elb_asg",
+        "title": "Elastic Load Balancing & Auto Scaling Groups",
+        "count": 64
+      },
+      {
+        "slug": "vpc",
+        "title": "VPC",
+        "count": 67
+      },
+      {
+        "slug": "s3",
+        "title": "Amazon S3",
+        "count": 115
+      },
+      {
+        "slug": "databases",
+        "title": "Databases & Analytics",
+        "count": 84
+      },
+      {
+        "slug": "cloud_integration",
+        "title": "Cloud Integration",
+        "count": 13
+      },
+      {
+        "slug": "machine_learning",
+        "title": "Machine Learning",
+        "count": 27
+      },
+      {
+        "slug": "cloud_monitoring",
+        "title": "Cloud Monitoring",
+        "count": 39
+      },
+      {
+        "slug": "deploying",
+        "title": "Deploying and Managing Infrastructure at Scale",
+        "count": 59
+      },
+      {
+        "slug": "other_aws_services",
+        "title": "Other AWS Services",
+        "count": 84
+      }
+    ]
+  },
+  {
+    "domain": 4,
+    "title": "Billing and Pricing",
+    "count": 220,
+    "topics": [
+      {
+        "slug": "account_management_billing_support",
+        "title": "Account Management, Billing & Support",
+        "count": 220
+      }
+    ]
+  }
+]
