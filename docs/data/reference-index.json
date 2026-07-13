@@ -1,5 +1,9 @@
 [
   {
+    "file": "study-guide.md",
+    "title": "Study Guide"
+  },
+  {
     "file": "account_management_billing_support.md",
     "title": "Account Management, Billing & Support"
   },

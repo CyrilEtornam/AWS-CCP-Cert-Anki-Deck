@@ -13,7 +13,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC_DECK = ROOT / "AWS_CCP_Cert" / "AWS_CCP_Cert.json"
-SRC_REFERENCE = ROOT / "AWS-Certified-Cloud-Practitioner-Notes" / "sections"
+SRC_NOTES = ROOT / "AWS-Certified-Cloud-Practitioner-Notes"
+SRC_REFERENCE = SRC_NOTES / "sections"
+SRC_STUDY_GUIDE = SRC_NOTES / "study-guide.md"
 OUT_DIR = ROOT / "docs" / "data"
 
 CHOICE_SPLIT_RE = re.compile(r"<br\s*/?>(?=[A-F]\. )")
@@ -103,6 +105,10 @@ def build_reference():
     ref_out = OUT_DIR / "reference"
     ref_out.mkdir(parents=True, exist_ok=True)
     files = []
+
+    shutil.copy(SRC_STUDY_GUIDE, ref_out / SRC_STUDY_GUIDE.name)
+    files.append({"file": SRC_STUDY_GUIDE.name, "title": extract_title(SRC_STUDY_GUIDE)})
+
     for md_file in sorted(SRC_REFERENCE.glob("*.md")):
         shutil.copy(md_file, ref_out / md_file.name)
         files.append({"file": md_file.name, "title": extract_title(md_file)})
