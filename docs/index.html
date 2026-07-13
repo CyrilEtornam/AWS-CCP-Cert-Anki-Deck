@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>AWS CCP Study</title>
-  <meta name="description" content="Offline flashcards and reference notes for the AWS Certified Cloud Practitioner exam.">
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f0f0f0">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1a1a1a">
+  <meta name="description" content="An offline field manual for the AWS Certified Cloud Practitioner exam.">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F3EC">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#17171B">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -21,9 +21,9 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">AWS CCP Study</div>
+    <div class="masthead">AWS CCP<span class="masthead-rule">/</span>Study</div>
     <div class="topbar-actions">
-      <div class="conn-badge" id="conn-badge" hidden>Offline</div>
+      <span class="conn-badge" id="conn-badge" hidden>offline</span>
       <button class="icon-btn" id="btn-theme-toggle" aria-label="Toggle dark mode">&#9788;</button>
     </div>
   </header>
@@ -31,79 +31,44 @@
   <main id="view-root"></main>
 
   <nav class="tabbar" id="tabbar">
-    <button class="tab-btn" data-tab="home" aria-current="page">
-      <span class="tab-icon" aria-hidden="true">&#8962;</span>
-      <span>Home</span>
-    </button>
-    <button class="tab-btn" data-tab="study">
-      <span class="tab-icon" aria-hidden="true">&#9724;</span>
-      <span>Study</span>
-    </button>
-    <button class="tab-btn" data-tab="reference">
-      <span class="tab-icon" aria-hidden="true">&#128214;</span>
-      <span>Reference</span>
-    </button>
+    <button class="tab-btn" data-tab="library" aria-current="page">Library</button>
+    <button class="tab-btn" data-tab="notes">Notes</button>
   </nav>
 
-  <template id="tpl-home">
-    <section class="view view-home">
-      <div class="stat-grid">
-        <div class="stat-card">
-          <div class="stat-value" data-stat="new">0</div>
-          <div class="stat-label">New</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" data-stat="due">0</div>
-          <div class="stat-label">Due</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" data-stat="mastered">0</div>
-          <div class="stat-label">Mastered</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" data-stat="total">0</div>
-          <div class="stat-label">Total</div>
-        </div>
-      </div>
+  <template id="tpl-library">
+    <section class="view view-library">
+      <p class="status-line" id="status-line"></p>
 
-      <div class="field">
-        <label for="filter-deck">Deck</label>
-        <select id="filter-deck"></select>
-      </div>
-      <div class="field">
-        <label for="filter-tag">Exam / Tag</label>
-        <select id="filter-tag"></select>
-      </div>
+      <button class="btn-continue" id="btn-continue-today">
+        <span class="btn-continue-label">Continue today</span>
+        <span class="btn-continue-count" id="continue-count"></span>
+      </button>
 
-      <button class="btn btn-primary btn-block" id="btn-start-study">Study due cards</button>
-      <button class="btn btn-secondary btn-block" id="btn-cram">Cram this filter (ignore schedule)</button>
-      <button class="btn btn-ghost btn-block" id="btn-reset-progress">Reset progress&hellip;</button>
+      <h2 class="section-label">Curriculum</h2>
+      <nav class="toc" id="toc" aria-label="Curriculum, in AWS exam order"></nav>
+
+      <h2 class="section-label">Practice Exams</h2>
+      <div class="exam-grid" id="exam-grid"></div>
+
+      <button class="text-link footer-link" id="btn-reset-progress">Reset progress&hellip;</button>
     </section>
   </template>
 
   <template id="tpl-study">
     <section class="view view-study">
-      <div class="study-header">
-        <button class="btn btn-ghost btn-small" id="btn-study-exit">&larr; Home</button>
-        <div class="study-progress" id="study-progress"></div>
-      </div>
-
-      <div class="card-area" id="card-area">
-        <div class="empty-state" id="study-empty" hidden>
-          <p>Nothing to study right now.</p>
-          <button class="btn btn-primary" id="btn-study-empty-home">Back to Home</button>
-        </div>
-      </div>
+      <header class="study-head">
+        <button class="study-exit" id="btn-study-exit" aria-label="Exit to Library">&larr;</button>
+        <span class="study-runner" id="study-runner"></span>
+      </header>
+      <div class="card-area" id="card-area"></div>
     </section>
   </template>
 
-  <template id="tpl-reference">
-    <section class="view view-reference">
-      <div class="reference-layout">
-        <nav class="reference-list" id="reference-list" aria-label="Reference topics"></nav>
-        <article class="reference-content" id="reference-content">
-          <p class="empty-state">Pick a topic to read.</p>
-        </article>
+  <template id="tpl-notes">
+    <section class="view view-notes">
+      <div class="notes-layout">
+        <nav class="notes-list" id="notes-list" aria-label="Notes topics"></nav>
+        <article class="notes-content" id="notes-content"></article>
       </div>
     </section>
   </template>

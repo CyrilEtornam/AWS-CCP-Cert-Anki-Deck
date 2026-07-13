@@ -1,6 +1,6 @@
 // Bump this on every deploy that changes cached files, so clients pick up
 // the new version instead of serving stale cache-first responses forever.
-var CACHE_VERSION = 'ccp-study-v1';
+var CACHE_VERSION = 'ccp-study-v2';
 
 var CORE_ASSETS = [
   './',
@@ -10,7 +10,9 @@ var CORE_ASSETS = [
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
+  'fonts/fraunces.woff2',
   'data/deck.json',
+  'data/curriculum.json',
   'data/reference-index.json'
 ];
 

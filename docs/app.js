@@ -2,24 +2,24 @@
   'use strict';
 
   var DATA_URL = 'data/deck.json';
-  var REF_INDEX_URL = 'data/reference-index.json';
-  var REF_BASE = 'data/reference/';
+  var CURRICULUM_URL = 'data/curriculum.json';
+  var NOTES_INDEX_URL = 'data/reference-index.json';
+  var NOTES_BASE = 'data/reference/';
   var PROGRESS_KEY = 'ccp-progress-v1';
-  var FILTERS_KEY = 'ccp-filters-v1';
   var THEME_KEY = 'ccp-theme';
 
   var GRADE_QUALITY = { again: 0, hard: 3, good: 4, easy: 5 };
-  var DECK_ORDER = ['AWS CCP Cert', 'Study Notes', 'Practice Exams'];
   var DECK_LABELS = { 'AWS CCP Cert': 'AWS CCP Cert (core)' };
+  var ROMAN = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
 
   var state = {
     cards: [],
     cardsById: new Map(),
-    referenceIndex: [],
+    curriculum: [],
+    notesIndex: [],
     progress: {},
-    filters: { deck: 'all', tag: 'all' },
     session: null,
-    lastReferenceFile: null
+    lastNotesFile: null
   };
 
   // ---------------------------------------------------------------------
@@ -66,19 +66,6 @@
 
   function saveProgress() {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(state.progress));
-  }
-
-  function loadFilters() {
-    try {
-      var raw = localStorage.getItem(FILTERS_KEY);
-      return raw ? JSON.parse(raw) : { deck: 'all', tag: 'all' };
-    } catch (e) {
-      return { deck: 'all', tag: 'all' };
-    }
-  }
-
-  function saveFilters() {
-    localStorage.setItem(FILTERS_KEY, JSON.stringify(state.filters));
   }
 
   function isNewCard(id) {
@@ -133,55 +120,69 @@
   function loadData() {
     return Promise.all([
       fetch(DATA_URL).then(function (r) { return r.json(); }),
-      fetch(REF_INDEX_URL).then(function (r) { return r.json(); })
+      fetch(CURRICULUM_URL).then(function (r) { return r.json(); }),
+      fetch(NOTES_INDEX_URL).then(function (r) { return r.json(); })
     ]).then(function (results) {
       state.cards = results[0];
       state.cards.forEach(function (c) { state.cardsById.set(c.id, c); });
-      state.referenceIndex = results[1];
+      state.curriculum = results[1];
+      state.notesIndex = results[2];
       state.progress = loadProgress();
-      state.filters = loadFilters();
     });
   }
 
   // ---------------------------------------------------------------------
-  // Filtering
+  // Stats + curriculum helpers
   // ---------------------------------------------------------------------
 
-  function deckOptions() {
-    var seen = new Set();
-    state.cards.forEach(function (c) { seen.add(c.deck); });
-    var decks = DECK_ORDER.filter(function (d) { return seen.has(d); });
-    seen.forEach(function (d) { if (decks.indexOf(d) === -1) decks.push(d); });
-    return decks;
-  }
-
-  function tagOptions(deck) {
-    var tags = new Set();
-    state.cards.forEach(function (c) {
-      if (deck !== 'all' && c.deck !== deck) return;
-      c.tags.forEach(function (t) { tags.add(t); });
-    });
-    return Array.from(tags).sort();
-  }
-
-  function filteredCards() {
-    return state.cards.filter(function (c) {
-      if (state.filters.deck !== 'all' && c.deck !== state.filters.deck) return false;
-      if (state.filters.tag !== 'all' && c.tags.indexOf(state.filters.tag) === -1) return false;
-      return true;
-    });
-  }
-
-  function computeStats(cards) {
+  function computeGlobalStats() {
     var neu = 0, due = 0, mastered = 0;
     var today = todayStr();
-    cards.forEach(function (c) {
+    state.cards.forEach(function (c) {
       var p = state.progress[c.id];
       if (!p) { neu++; return; }
       if (p.dueDate <= today) due++;
       if (p.interval >= 21) mastered++;
     });
-    return { new: neu, due: due, mastered: mastered, total: cards.length };
+    return { new: neu, due: due, mastered: mastered, total: state.cards.length, ready: neu + due };
+  }
+
+  function flatTopics() {
+    var out = [];
+    state.curriculum.forEach(function (d) {
+      d.topics.forEach(function (t) { out.push({ domain: d.domain, slug: t.slug }); });
+    });
+    return out;
+  }
+
+  function topicOrderIndex() {
+    var index = new Map();
+    flatTopics().forEach(function (t, i) { index.set(t.slug, i); });
+    return index;
+  }
+
+  function domainInfo(domainNum) {
+    return state.curriculum.filter(function (d) { return d.domain === domainNum; })[0];
+  }
+
+  function topicInfo(slug) {
+    for (var i = 0; i < state.curriculum.length; i++) {
+      var d = state.curriculum[i];
+      for (var j = 0; j < d.topics.length; j++) {
+        if (d.topics[j].slug === slug) return { domain: d, topic: d.topics[j] };
+      }
+    }
+    return null;
+  }
+
+  function examTags() {
+    var set = new Set();
+    state.cards.forEach(function (c) {
+      c.tags.forEach(function (t) { if (/^exam\d+$/i.test(t)) set.add(t); });
+    });
+    return Array.from(set).sort(function (a, b) {
+      return parseInt(a.replace(/\D/g, ''), 10) - parseInt(b.replace(/\D/g, ''), 10);
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -197,15 +198,12 @@
   }
 
   function switchTab(tab) {
-    state.session = null;
     document.querySelectorAll('.tab-btn').forEach(function (btn) {
-      var active = btn.dataset.tab === tab;
-      if (active) btn.setAttribute('aria-current', 'page');
+      if (btn.dataset.tab === tab) btn.setAttribute('aria-current', 'page');
       else btn.removeAttribute('aria-current');
     });
-    if (tab === 'home') renderHome();
-    else if (tab === 'study') { startSession(false); }
-    else if (tab === 'reference') renderReference();
+    if (tab === 'library') renderLibrary();
+    else if (tab === 'notes') renderNotes();
   }
 
   function wireTabbar() {
@@ -217,57 +215,73 @@
   }
 
   // ---------------------------------------------------------------------
-  // Home view
+  // Library view
   // ---------------------------------------------------------------------
 
-  function renderHome() {
-    var root = mountTemplate('tpl-home');
-    document.querySelectorAll('.tab-btn').forEach(function (btn) {
-      if (btn.dataset.tab === 'home') btn.setAttribute('aria-current', 'page');
+  function renderLibrary() {
+    var root = mountTemplate('tpl-library');
+    var stats = computeGlobalStats();
+
+    root.querySelector('#status-line').textContent =
+      stats.total.toLocaleString() + ' cards · ' + stats.ready.toLocaleString() + ' ready today · ' + stats.mastered.toLocaleString() + ' mastered';
+
+    root.querySelector('#continue-count').textContent = stats.ready > 0 ? stats.ready.toLocaleString() + ' ready' : 'all caught up';
+    root.querySelector('#btn-continue-today').addEventListener('click', function () {
+      startSession({ mode: 'due' });
     });
 
-    var stats = computeStats(filteredCards());
-    root.querySelector('[data-stat="new"]').textContent = stats.new;
-    root.querySelector('[data-stat="due"]').textContent = stats.due;
-    root.querySelector('[data-stat="mastered"]').textContent = stats.mastered;
-    root.querySelector('[data-stat="total"]').textContent = stats.total;
+    renderToc(root.querySelector('#toc'));
+    renderExamGrid(root.querySelector('#exam-grid'));
 
-    var deckSelect = root.querySelector('#filter-deck');
-    var decks = deckOptions();
-    deckSelect.innerHTML = ['all'].concat(decks).map(function (d) {
-      var label = d === 'all' ? 'All decks' : (DECK_LABELS[d] || d);
-      return '<option value="' + escapeAttr(d) + '">' + escapeHtml(label) + '</option>';
-    }).join('');
-    deckSelect.value = state.filters.deck;
-    deckSelect.addEventListener('change', function () {
-      state.filters.deck = deckSelect.value;
-      state.filters.tag = 'all';
-      saveFilters();
-      renderHome();
-    });
-
-    var tagSelect = root.querySelector('#filter-tag');
-    var tags = tagOptions(state.filters.deck);
-    tagSelect.innerHTML = ['all'].concat(tags).map(function (t) {
-      return '<option value="' + escapeAttr(t) + '">' + escapeHtml(t === 'all' ? 'All tags' : t) + '</option>';
-    }).join('');
-    tagSelect.value = tags.indexOf(state.filters.tag) === -1 ? 'all' : state.filters.tag;
-    tagSelect.addEventListener('change', function () {
-      state.filters.tag = tagSelect.value;
-      saveFilters();
-      renderHome();
-    });
-
-    root.querySelector('#btn-start-study').addEventListener('click', function () { switchTab('study'); });
-    root.querySelector('#btn-cram').addEventListener('click', function () {
-      document.querySelectorAll('.tab-btn').forEach(function (btn) {
-        if (btn.dataset.tab === 'study') btn.setAttribute('aria-current', 'page');
-        else btn.removeAttribute('aria-current');
-      });
-      state.session = null;
-      startSession(true);
-    });
     root.querySelector('#btn-reset-progress').addEventListener('click', confirmResetProgress);
+  }
+
+  function renderToc(container) {
+    container.innerHTML = state.curriculum.map(function (d) {
+      var topicsHtml = d.topics.map(function (t) {
+        return '<button class="toc-topic-row" data-topic="' + escapeAttr(t.slug) + '">' +
+          '<span class="toc-topic-title">' + escapeHtml(t.title) + '</span>' +
+          '<span class="toc-count">' + t.count + '</span>' +
+          '</button>';
+      }).join('');
+
+      return (
+        '<div class="toc-domain">' +
+        '<button class="toc-domain-row" data-domain="' + d.domain + '">' +
+        '<span class="toc-domain-numeral">' + ROMAN[d.domain] + '</span>' +
+        '<span class="toc-domain-title">' + escapeHtml(d.title) + '</span>' +
+        '<span class="toc-count">' + d.count + '</span>' +
+        '</button>' +
+        '<div class="toc-topics">' + topicsHtml + '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    container.addEventListener('click', function (e) {
+      var domainBtn = e.target.closest('.toc-domain-row');
+      if (domainBtn) {
+        startSession({ mode: 'domain', domain: Number(domainBtn.dataset.domain) });
+        return;
+      }
+      var topicBtn = e.target.closest('.toc-topic-row');
+      if (topicBtn) {
+        startSession({ mode: 'topic', topic: topicBtn.dataset.topic });
+      }
+    });
+  }
+
+  function renderExamGrid(container) {
+    var tags = examTags();
+    container.innerHTML = tags.map(function (tag) {
+      var num = parseInt(tag.replace(/\D/g, ''), 10);
+      return '<button class="exam-chip" data-exam="' + escapeAttr(tag) + '">' + num + '</button>';
+    }).join('');
+
+    container.addEventListener('click', function (e) {
+      var btn = e.target.closest('.exam-chip');
+      if (!btn) return;
+      startSession({ mode: 'exam', examTag: btn.dataset.exam });
+    });
   }
 
   function confirmResetProgress() {
@@ -289,58 +303,123 @@
         state.progress = {};
         saveProgress();
         backdrop.remove();
-        renderHome();
+        renderLibrary();
       }
     });
   }
 
   // ---------------------------------------------------------------------
-  // Study view
+  // Study sessions
   // ---------------------------------------------------------------------
 
-  function startSession(cram) {
-    var cards = filteredCards();
+  function startSession(scope) {
     var ids;
-    if (cram) {
-      ids = cards.map(function (c) { return c.id; });
-    } else {
-      ids = cards.filter(function (c) { return isNewCard(c.id) || isDueCard(c.id); })
+
+    if (scope.mode === 'due') {
+      ids = state.cards.filter(function (c) { return isNewCard(c.id) || isDueCard(c.id); })
+        .map(function (c) { return c.id; });
+      shuffle(ids);
+    } else if (scope.mode === 'domain') {
+      var tIndex = topicOrderIndex();
+      ids = state.cards
+        .map(function (c, i) { return { c: c, i: i }; })
+        .filter(function (x) { return x.c.domain === scope.domain; })
+        .sort(function (a, b) {
+          return (tIndex.get(a.c.topic) - tIndex.get(b.c.topic)) || (a.i - b.i);
+        })
+        .map(function (x) { return x.c.id; });
+    } else if (scope.mode === 'topic') {
+      ids = state.cards.filter(function (c) { return c.topic === scope.topic; })
+        .map(function (c) { return c.id; });
+    } else if (scope.mode === 'exam') {
+      ids = state.cards.filter(function (c) { return c.tags.indexOf(scope.examTag) !== -1; })
         .map(function (c) { return c.id; });
     }
-    shuffle(ids);
-    state.session = { queue: ids, index: 0, cram: cram };
+
+    state.session = { queue: ids, index: 0, scope: scope };
+    document.body.classList.add('is-studying');
     renderStudy();
+  }
+
+  function sessionLabel(scope) {
+    if (scope.mode === 'due') return 'Due & new';
+    if (scope.mode === 'exam') return 'Exam ' + parseInt(scope.examTag.replace(/\D/g, ''), 10);
+    if (scope.mode === 'domain') {
+      var d = domainInfo(scope.domain);
+      return ROMAN[scope.domain] + ' · ' + d.title;
+    }
+    if (scope.mode === 'topic') {
+      var info = topicInfo(scope.topic);
+      return ROMAN[info.domain.domain] + ' · ' + info.domain.title + ' — ' + info.topic.title;
+    }
+    return '';
+  }
+
+  function nextSectionScope(scope) {
+    if (scope.mode === 'topic') {
+      var topics = flatTopics();
+      var i = topics.findIndex(function (t) { return t.slug === scope.topic; });
+      if (i !== -1 && i + 1 < topics.length) {
+        return { mode: 'topic', topic: topics[i + 1].slug };
+      }
+      return null;
+    }
+    if (scope.mode === 'domain') {
+      var nextDomain = scope.domain + 1;
+      if (domainInfo(nextDomain)) return { mode: 'domain', domain: nextDomain };
+      return null;
+    }
+    return null;
+  }
+
+  function exitStudy() {
+    document.body.classList.remove('is-studying');
+    state.session = null;
+    switchTab('library');
   }
 
   function renderStudy() {
     mountTemplate('tpl-study');
-    document.querySelectorAll('.tab-btn').forEach(function (btn) {
-      if (btn.dataset.tab === 'study') btn.setAttribute('aria-current', 'page');
-    });
-    document.getElementById('btn-study-exit').addEventListener('click', function () { switchTab('home'); });
+    document.getElementById('btn-study-exit').addEventListener('click', exitStudy);
     updateStudyCard();
   }
 
   function updateStudyCard() {
     var session = state.session;
-    var progressEl = document.getElementById('study-progress');
+    var runner = document.getElementById('study-runner');
     var cardArea = document.getElementById('card-area');
 
-    if (!session || session.index >= session.queue.length) {
-      progressEl.textContent = '';
-      cardArea.innerHTML =
-        '<div class="empty-state">' +
-        '<p>' + (session && session.queue.length ? 'Session complete. Nice work.' : 'Nothing to study right now.') + '</p>' +
-        '<button class="btn btn-primary" id="btn-study-empty-home">Back to Home</button>' +
-        '</div>';
-      document.getElementById('btn-study-empty-home').addEventListener('click', function () { switchTab('home'); });
+    if (session.index >= session.queue.length) {
+      renderSessionComplete(cardArea, session);
+      runner.textContent = sessionLabel(session.scope);
       return;
     }
 
-    progressEl.textContent = (session.index + 1) + ' / ' + session.queue.length + (session.cram ? ' (cram)' : '');
+    runner.textContent = sessionLabel(session.scope) + ' — ' + (session.index + 1) + ' / ' + session.queue.length;
     var card = state.cardsById.get(session.queue[session.index]);
     cardArea.innerHTML = '';
     cardArea.appendChild(card.type === 'cloze' ? buildClozeCardEl(card) : buildMcqCardEl(card));
+  }
+
+  function renderSessionComplete(cardArea, session) {
+    var message = 'All caught up.';
+    if (session.queue.length === 0) message = 'Nothing to study here yet.';
+    else if (session.scope.mode === 'topic' || session.scope.mode === 'domain') message = 'Section complete.';
+    else if (session.scope.mode === 'exam') message = 'Exam complete.';
+
+    var next = session.queue.length > 0 ? nextSectionScope(session.scope) : null;
+
+    var html = '<div class="empty-state"><p>' + escapeHtml(message) + '</p><div class="next-section-row">';
+    if (next) {
+      html += '<button class="btn" id="btn-next-section">Next: ' + escapeHtml(sessionLabel(next)) + ' &rarr;</button>';
+    }
+    html += '<button class="btn btn-secondary" id="btn-back-library">Back to Library</button></div></div>';
+
+    cardArea.innerHTML = html;
+    if (next) {
+      document.getElementById('btn-next-section').addEventListener('click', function () { startSession(next); });
+    }
+    document.getElementById('btn-back-library').addEventListener('click', exitStudy);
   }
 
   function advanceSession() {
@@ -348,10 +427,9 @@
     updateStudyCard();
   }
 
-  function metaChipsHtml(card) {
-    var chips = ['<span class="chip">' + escapeHtml(DECK_LABELS[card.deck] || card.deck) + '</span>'];
-    card.tags.forEach(function (t) { chips.push('<span class="chip">' + escapeHtml(t) + '</span>'); });
-    return chips.join('');
+  function metaLine(card) {
+    var parts = [DECK_LABELS[card.deck] || card.deck].concat(card.tags);
+    return escapeHtml(parts.join(' · '));
   }
 
   function gradeRowHtml() {
@@ -387,11 +465,11 @@
     var wrap = document.createElement('div');
     wrap.className = 'card';
     wrap.innerHTML =
-      '<div class="card-meta">' + metaChipsHtml(card) + '</div>' +
+      '<div class="card-meta">' + metaLine(card) + '</div>' +
       '<div class="card-body">' + clozeHtml(card.text, false) + '</div>' +
       '<div class="card-extra" hidden></div>' +
       '<div class="card-actions">' +
-      '<button class="btn btn-primary btn-block" data-action="reveal">Show answer</button>' +
+      '<button class="btn" data-action="reveal">Show answer</button>' +
       gradeRowHtml() +
       '</div>';
 
@@ -401,7 +479,14 @@
     var gradeRow = wrap.querySelector('.grade-row');
 
     revealBtn.addEventListener('click', function () {
-      body.innerHTML = clozeHtml(card.text, true);
+      body.classList.add('flip-out');
+      setTimeout(function () {
+        body.innerHTML = clozeHtml(card.text, true);
+        body.classList.remove('flip-out');
+        body.classList.add('flip-in');
+        setTimeout(function () { body.classList.remove('flip-in'); }, 280);
+      }, 180);
+
       if (card.extra && card.extra.trim()) {
         extra.hidden = false;
         extra.innerHTML = card.extra;
@@ -420,14 +505,14 @@
     var multi = card.correct.length > 1;
 
     wrap.innerHTML =
-      '<div class="card-meta">' + metaChipsHtml(card) + '</div>' +
+      '<div class="card-meta">' + metaLine(card) + '</div>' +
       '<div class="card-body">' + card.question + '</div>' +
       '<div class="choices">' + card.choices.map(function (ch) {
         return '<button class="choice-btn" data-letter="' + escapeAttr(ch.letter) + '">' +
           '<span class="choice-letter">' + escapeHtml(ch.letter) + '</span><span>' + ch.text + '</span>' +
           '</button>';
       }).join('') + '</div>' +
-      (multi ? '<button class="btn btn-secondary btn-block" data-action="submit-mcq" disabled>Check answer</button>' : '') +
+      (multi ? '<button class="btn btn-secondary" data-action="submit-mcq" disabled>Check answer</button>' : '') +
       '<div class="explanation" hidden></div>' +
       '<div class="card-actions">' + gradeRowHtml() + '</div>';
 
@@ -485,48 +570,43 @@
   }
 
   // ---------------------------------------------------------------------
-  // Reference view + markdown renderer
+  // Notes view + markdown renderer
   // ---------------------------------------------------------------------
 
-  function renderReference() {
-    var root = mountTemplate('tpl-reference');
-    document.querySelectorAll('.tab-btn').forEach(function (btn) {
-      if (btn.dataset.tab === 'reference') btn.setAttribute('aria-current', 'page');
-    });
+  function renderNotes() {
+    var root = mountTemplate('tpl-notes');
+    var list = root.querySelector('#notes-list');
+    var content = root.querySelector('#notes-content');
 
-    var list = root.querySelector('#reference-list');
-    var content = root.querySelector('#reference-content');
-
-    list.innerHTML = state.referenceIndex.map(function (item) {
-      return '<button class="reference-item" data-file="' + escapeAttr(item.file) + '">' +
+    list.innerHTML = state.notesIndex.map(function (item) {
+      return '<button class="notes-item" data-file="' + escapeAttr(item.file) + '">' +
         escapeHtml(item.title) + '</button>';
     }).join('');
 
     list.addEventListener('click', function (e) {
-      var btn = e.target.closest('.reference-item');
+      var btn = e.target.closest('.notes-item');
       if (!btn) return;
-      loadReferenceFile(btn.dataset.file, list, content);
+      loadNotesFile(btn.dataset.file, list, content);
     });
 
     content.addEventListener('click', function (e) {
       var link = e.target.closest('a[data-internal-ref]');
       if (!link) return;
       e.preventDefault();
-      loadReferenceFile(link.dataset.internalRef, list, content);
+      loadNotesFile(link.dataset.internalRef, list, content);
     });
 
-    var startFile = state.lastReferenceFile ||
-      (state.referenceIndex[0] && state.referenceIndex[0].file);
-    if (startFile) loadReferenceFile(startFile, list, content);
+    var startFile = state.lastNotesFile || (state.notesIndex[0] && state.notesIndex[0].file);
+    if (startFile) loadNotesFile(startFile, list, content);
   }
 
-  function loadReferenceFile(file, list, content) {
-    state.lastReferenceFile = file;
-    list.querySelectorAll('.reference-item').forEach(function (b) {
+  function loadNotesFile(file, list, content) {
+    state.lastNotesFile = file;
+    list.querySelectorAll('.notes-item').forEach(function (b) {
       b.classList.toggle('is-active', b.dataset.file === file);
     });
     content.innerHTML = '<p class="empty-state">Loading&hellip;</p>';
-    fetch(REF_BASE + file)
+    fetch(NOTES_BASE + file)
       .then(function (res) {
         if (!res.ok) throw new Error('not found');
         return res.text();
@@ -556,7 +636,7 @@
 
   function imgPlaceholder(alt) {
     var label = alt && alt.trim() ? escapeHtml(alt.trim()) : 'diagram';
-    return '<span class="img-placeholder">🖼 ' + label + ' (image omitted for offline use)</span>';
+    return '<span class="img-placeholder">' + label + ' (image omitted for offline use)</span>';
   }
 
   function renderLink(label, href) {
@@ -762,7 +842,7 @@
     registerServiceWorker();
 
     loadData()
-      .then(function () { switchTab('home'); })
+      .then(function () { switchTab('library'); })
       .catch(function () {
         document.getElementById('view-root').innerHTML =
           '<p class="empty-state">Could not load study data. Visit once online so it can be cached for offline use.</p>';
