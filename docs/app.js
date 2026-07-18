@@ -7,6 +7,9 @@
   var NOTES_BASE = 'data/reference/';
   var PROGRESS_KEY = 'ccp-progress-v1';
   var THEME_KEY = 'ccp-theme';
+  var QUIZ_HISTORY_KEY = 'ccp-quiz-history-v1';
+  var QUIZ_HISTORY_MAX = 25;
+  var QUIZ_PASS_PERCENT = 70;
 
   var GRADE_QUALITY = { again: 0, hard: 3, good: 4, easy: 5 };
   var DECK_LABELS = { 'AWS CCP Cert': 'AWS CCP Cert (core)' };
@@ -19,6 +22,8 @@
     notesIndex: [],
     progress: {},
     session: null,
+    quiz: null,
+    quizHistory: [],
     lastNotesFile: null
   };
 
@@ -66,6 +71,27 @@
 
   function saveProgress() {
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(state.progress));
+  }
+
+  function loadQuizHistory() {
+    try {
+      var raw = localStorage.getItem(QUIZ_HISTORY_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveQuizHistory() {
+    localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify(state.quizHistory));
+  }
+
+  function recordQuizResult(entry) {
+    state.quizHistory.unshift(entry);
+    if (state.quizHistory.length > QUIZ_HISTORY_MAX) {
+      state.quizHistory.length = QUIZ_HISTORY_MAX;
+    }
+    saveQuizHistory();
   }
 
   function isNewCard(id) {
@@ -128,6 +154,7 @@
       state.curriculum = results[1];
       state.notesIndex = results[2];
       state.progress = loadProgress();
+      state.quizHistory = loadQuizHistory();
     });
   }
 
@@ -203,6 +230,7 @@
       else btn.removeAttribute('aria-current');
     });
     if (tab === 'library') renderLibrary();
+    else if (tab === 'quiz') renderQuizHome();
     else if (tab === 'notes') renderNotes();
   }
 
@@ -566,6 +594,260 @@
     if (submitBtn) submitBtn.addEventListener('click', reveal);
 
     wireGradeRow(wrap, card.id);
+    return wrap;
+  }
+
+  // ---------------------------------------------------------------------
+  // Quiz mode (scored, no SRS)
+  // ---------------------------------------------------------------------
+
+  function mcqCards() {
+    return state.cards.filter(function (c) { return c.type === 'mcq'; });
+  }
+
+  function mcqCountForDomain(domainNum) {
+    var n = 0;
+    state.cards.forEach(function (c) {
+      if (c.type === 'mcq' && c.domain === domainNum) n++;
+    });
+    return n;
+  }
+
+  function quizScopeLabel(scope) {
+    if (scope.mode === 'exam') return 'Exam ' + parseInt(scope.examTag.replace(/\D/g, ''), 10);
+    if (scope.mode === 'domain') {
+      var d = domainInfo(scope.domain);
+      return ROMAN[scope.domain] + ' · ' + d.title;
+    }
+    if (scope.mode === 'random') return 'Quick quiz';
+    return '';
+  }
+
+  function bestQuizPercent() {
+    var best = 0;
+    state.quizHistory.forEach(function (h) { if (h.percent > best) best = h.percent; });
+    return best;
+  }
+
+  function renderQuizHome() {
+    var root = mountTemplate('tpl-quiz');
+    var mcqTotal = mcqCards().length;
+
+    root.querySelector('#quiz-status-line').textContent =
+      mcqTotal.toLocaleString() + ' quiz-ready questions' +
+      (state.quizHistory.length ? ' · best score ' + bestQuizPercent() + '%' : '');
+
+    var examGrid = root.querySelector('#quiz-exam-grid');
+    examGrid.innerHTML = examTags().map(function (tag) {
+      var num = parseInt(tag.replace(/\D/g, ''), 10);
+      return '<button class="exam-chip" data-exam="' + escapeAttr(tag) + '">' + num + '</button>';
+    }).join('');
+    examGrid.addEventListener('click', function (e) {
+      var btn = e.target.closest('.exam-chip');
+      if (!btn) return;
+      startQuiz({ mode: 'exam', examTag: btn.dataset.exam });
+    });
+
+    var domainList = root.querySelector('#quiz-domain-list');
+    domainList.innerHTML = state.curriculum.map(function (d) {
+      var count = mcqCountForDomain(d.domain);
+      if (count === 0) return '';
+      return '<button class="toc-domain-row" data-domain="' + d.domain + '">' +
+        '<span class="toc-domain-numeral">' + ROMAN[d.domain] + '</span>' +
+        '<span class="toc-domain-title">' + escapeHtml(d.title) + '</span>' +
+        '<span class="toc-count">' + count + '</span>' +
+        '</button>';
+    }).join('');
+    domainList.addEventListener('click', function (e) {
+      var btn = e.target.closest('.toc-domain-row');
+      if (!btn) return;
+      startQuiz({ mode: 'domain', domain: Number(btn.dataset.domain) });
+    });
+
+    root.querySelector('#btn-quick-quiz').addEventListener('click', function () {
+      startQuiz({ mode: 'random', size: 20 });
+    });
+
+    var historyBlock = root.querySelector('#quiz-history-block');
+    if (state.quizHistory.length) {
+      historyBlock.hidden = false;
+      root.querySelector('#quiz-history-list').innerHTML = state.quizHistory.slice(0, 8).map(function (h) {
+        var passClass = h.percent >= QUIZ_PASS_PERCENT ? 'is-correct' : 'is-incorrect';
+        return '<div class="quiz-history-row">' +
+          '<span class="quiz-history-label">' + escapeHtml(h.label) + '</span>' +
+          '<span class="quiz-history-date">' + escapeHtml(h.date) + '</span>' +
+          '<span class="quiz-history-score ' + passClass + '">' + h.correct + '/' + h.total + ' · ' + h.percent + '%</span>' +
+          '</div>';
+      }).join('');
+    }
+  }
+
+  function startQuiz(scope) {
+    var ids;
+
+    if (scope.mode === 'exam') {
+      ids = state.cards.filter(function (c) { return c.type === 'mcq' && c.tags.indexOf(scope.examTag) !== -1; })
+        .map(function (c) { return c.id; });
+    } else if (scope.mode === 'domain') {
+      ids = state.cards.filter(function (c) { return c.type === 'mcq' && c.domain === scope.domain; })
+        .map(function (c) { return c.id; });
+      shuffle(ids);
+    } else if (scope.mode === 'random') {
+      ids = mcqCards().map(function (c) { return c.id; });
+      shuffle(ids);
+      ids = ids.slice(0, scope.size);
+    }
+
+    state.quiz = { queue: ids, index: 0, scope: scope, correct: 0 };
+    document.body.classList.add('is-quizzing');
+    renderQuizRunner();
+  }
+
+  function exitQuiz() {
+    document.body.classList.remove('is-quizzing');
+    state.quiz = null;
+    switchTab('quiz');
+  }
+
+  function renderQuizRunner() {
+    mountTemplate('tpl-quiz-runner');
+    document.getElementById('btn-quiz-exit').addEventListener('click', exitQuiz);
+    updateQuizCard();
+  }
+
+  function updateQuizCard() {
+    var quiz = state.quiz;
+    var runner = document.getElementById('quiz-runner');
+    var scoreBadge = document.getElementById('quiz-score-badge');
+    var cardArea = document.getElementById('quiz-card-area');
+
+    if (quiz.index >= quiz.queue.length) {
+      renderQuizComplete(cardArea, quiz);
+      runner.textContent = quizScopeLabel(quiz.scope);
+      scoreBadge.textContent = '';
+      return;
+    }
+
+    runner.textContent = quizScopeLabel(quiz.scope) + ' — ' + (quiz.index + 1) + ' / ' + quiz.queue.length;
+    scoreBadge.textContent = quiz.correct + ' correct';
+    var card = state.cardsById.get(quiz.queue[quiz.index]);
+    cardArea.innerHTML = '';
+    cardArea.appendChild(buildQuizMcqEl(card));
+  }
+
+  function advanceQuiz() {
+    state.quiz.index++;
+    updateQuizCard();
+  }
+
+  function renderQuizComplete(cardArea, quiz) {
+    var total = quiz.queue.length;
+    var percent = total > 0 ? Math.round((quiz.correct / total) * 100) : 0;
+    var passed = percent >= QUIZ_PASS_PERCENT;
+
+    if (total > 0) {
+      recordQuizResult({
+        date: todayStr(),
+        label: quizScopeLabel(quiz.scope),
+        correct: quiz.correct,
+        total: total,
+        percent: percent
+      });
+    }
+
+    var html =
+      '<div class="quiz-result">' +
+      (total > 0
+        ? '<div class="quiz-result-score ' + (passed ? 'is-correct' : 'is-incorrect') + '">' + percent + '%</div>' +
+          '<p class="quiz-result-detail">' + quiz.correct + ' of ' + total + ' correct — ' + (passed ? 'pass' : 'below ' + QUIZ_PASS_PERCENT + '%') + '</p>'
+        : '<p class="empty-state">No quiz-ready questions here yet.</p>') +
+      '<div class="next-section-row">' +
+      (total > 0 ? '<button class="btn" id="btn-quiz-retry">Retry</button>' : '') +
+      '<button class="btn btn-secondary" id="btn-quiz-back">Back to Quiz</button>' +
+      '</div></div>';
+
+    cardArea.innerHTML = html;
+    if (total > 0) {
+      document.getElementById('btn-quiz-retry').addEventListener('click', function () { startQuiz(quiz.scope); });
+    }
+    document.getElementById('btn-quiz-back').addEventListener('click', exitQuiz);
+  }
+
+  function buildQuizMcqEl(card) {
+    var wrap = document.createElement('div');
+    wrap.className = 'card';
+    var multi = card.correct.length > 1;
+    var isLast = state.quiz.index === state.quiz.queue.length - 1;
+
+    wrap.innerHTML =
+      '<div class="card-meta">' + metaLine(card) + '</div>' +
+      '<div class="card-body">' + card.question + '</div>' +
+      '<div class="choices">' + card.choices.map(function (ch) {
+        return '<button class="choice-btn" data-letter="' + escapeAttr(ch.letter) + '">' +
+          '<span class="choice-letter">' + escapeHtml(ch.letter) + '</span><span>' + ch.text + '</span>' +
+          '</button>';
+      }).join('') + '</div>' +
+      (multi ? '<button class="btn btn-secondary" data-action="submit-mcq" disabled>Check answer</button>' : '') +
+      '<div class="explanation" hidden></div>' +
+      '<div class="card-actions">' +
+      '<button class="btn" data-action="next-question" hidden>' + (isLast ? 'See results' : 'Next question') + '</button>' +
+      '</div>';
+
+    var choiceButtons = Array.prototype.slice.call(wrap.querySelectorAll('.choice-btn'));
+    var explanation = wrap.querySelector('.explanation');
+    var nextBtn = wrap.querySelector('[data-action="next-question"]');
+    var submitBtn = wrap.querySelector('[data-action="submit-mcq"]');
+    var revealed = false;
+    var selected = new Set();
+
+    function reveal() {
+      revealed = true;
+      if (submitBtn) submitBtn.hidden = true;
+      var isFullyCorrect = selected.size === card.correct.length &&
+        card.correct.every(function (letter) { return selected.has(letter); });
+      if (isFullyCorrect) state.quiz.correct++;
+      document.getElementById('quiz-score-badge').textContent = state.quiz.correct + ' correct';
+
+      choiceButtons.forEach(function (btn) {
+        btn.disabled = true;
+        var letter = btn.dataset.letter;
+        var isCorrect = card.correct.indexOf(letter) !== -1;
+        var isSelected = selected.has(letter);
+        btn.classList.remove('is-selected');
+        if (isCorrect && isSelected) btn.classList.add('is-correct');
+        else if (isCorrect && !isSelected) btn.classList.add('is-missed');
+        else if (!isCorrect && isSelected) btn.classList.add('is-incorrect');
+      });
+      if (card.explanation) {
+        explanation.hidden = false;
+        explanation.innerHTML = card.explanation;
+      }
+      nextBtn.hidden = false;
+    }
+
+    choiceButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (revealed) return;
+        var letter = btn.dataset.letter;
+        if (multi) {
+          if (selected.has(letter)) {
+            selected.delete(letter);
+            btn.classList.remove('is-selected');
+          } else {
+            selected.add(letter);
+            btn.classList.add('is-selected');
+          }
+          submitBtn.disabled = selected.size === 0;
+        } else {
+          selected.add(letter);
+          reveal();
+        }
+      });
+    });
+
+    if (submitBtn) submitBtn.addEventListener('click', reveal);
+    nextBtn.addEventListener('click', advanceQuiz);
+
     return wrap;
   }
 

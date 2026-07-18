@@ -59,8 +59,10 @@ body {
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-body.is-studying .tabbar { display: none; }
-body.is-studying #view-root { padding-bottom: 24px; }
+body.is-studying .tabbar,
+body.is-quizzing .tabbar { display: none; }
+body.is-studying #view-root,
+body.is-quizzing #view-root { padding-bottom: 24px; }
 
 button, select {
   font: inherit;
@@ -322,6 +324,15 @@ button, select {
   border-bottom: 1px solid var(--rule);
 }
 
+.quiz-score-badge {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 .card-area {
   min-height: 58vh;
   display: flex;
@@ -497,6 +508,58 @@ button, select {
   max-width: 320px;
   margin: 0 auto;
 }
+
+/* ---------- quiz ---------- */
+
+.quiz-result {
+  margin: auto;
+  text-align: center;
+  padding: 20px;
+}
+.quiz-result-score {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 600;
+  font-size: 56px;
+  line-height: 1;
+  color: var(--ink);
+}
+.quiz-result-score.is-correct { color: var(--correct); }
+.quiz-result-score.is-incorrect { color: var(--incorrect); }
+.quiz-result-detail {
+  color: var(--ink-muted);
+  font-size: 15px;
+  margin: 14px 0 26px;
+}
+
+.quiz-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.quiz-history-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  font-size: 13px;
+}
+.quiz-history-label { flex: 1; }
+.quiz-history-date {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+.quiz-history-score {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+.quiz-history-score.is-correct { color: var(--correct); }
+.quiz-history-score.is-incorrect { color: var(--incorrect); }
+
+#btn-quick-quiz { margin-top: 4px; }
 
 /* ---------- notes ---------- */
 

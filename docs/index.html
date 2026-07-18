@@ -32,6 +32,7 @@
 
   <nav class="tabbar" id="tabbar">
     <button class="tab-btn" data-tab="library" aria-current="page">Library</button>
+    <button class="tab-btn" data-tab="quiz">Quiz</button>
     <button class="tab-btn" data-tab="notes">Notes</button>
   </nav>
 
@@ -51,6 +52,37 @@
       <div class="exam-grid" id="exam-grid"></div>
 
       <button class="text-link footer-link" id="btn-reset-progress">Reset progress&hellip;</button>
+    </section>
+  </template>
+
+  <template id="tpl-quiz">
+    <section class="view view-quiz">
+      <p class="status-line" id="quiz-status-line"></p>
+
+      <h2 class="section-label">Practice Exams</h2>
+      <div class="exam-grid" id="quiz-exam-grid"></div>
+
+      <h2 class="section-label">Quiz by domain</h2>
+      <nav class="toc" id="quiz-domain-list" aria-label="Quiz by domain"></nav>
+
+      <h2 class="section-label">Quick quiz</h2>
+      <button class="btn" id="btn-quick-quiz">20 random questions</button>
+
+      <div id="quiz-history-block" hidden>
+        <h2 class="section-label">Recent attempts</h2>
+        <div class="quiz-history-list" id="quiz-history-list"></div>
+      </div>
+    </section>
+  </template>
+
+  <template id="tpl-quiz-runner">
+    <section class="view view-quiz-runner">
+      <header class="study-head">
+        <button class="study-exit" id="btn-quiz-exit" aria-label="Exit to Quiz">&larr;</button>
+        <span class="study-runner" id="quiz-runner"></span>
+        <span class="quiz-score-badge" id="quiz-score-badge"></span>
+      </header>
+      <div class="card-area" id="quiz-card-area"></div>
     </section>
   </template>
 
